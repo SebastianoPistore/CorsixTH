@@ -76,6 +76,14 @@ function Patient:onClick(ui, button)
     -- The object we're using is made invisible, as the animation contains both
     -- the humanoid and the object. Hence send the click onto the object.
     self.user_of:onClick(ui, button)
+  elseif TheApp.config.debug_falling and button == "right" then
+    -- Attempt to push patient over
+    -- Currently debug-only, enable in config file for testing.
+    -- Once confirmed working, the debugging flag can be removed.
+    if not self.world:isPaused() and not (self.cured or self.dead or self.going_home)
+         and math.random(1, 2) == 2 then
+      self:falling(true)
+    end
   end
   Humanoid.onClick(self, ui, button)
 end
@@ -150,7 +158,7 @@ function Patient:setDiagnosed()
   self:updateDynamicInfo()
 end
 
--- Modifies the diagnosis progress of a patient.
+--! Modifies the diagnosis progress of a patient.
 -- incrementValue can be either positive or negative.
 function Patient:modifyDiagnosisProgress(incrementValue)
   self.diagnosis_progress = math.min(self.hospital.policies["stop_procedure"],
@@ -163,7 +171,7 @@ function Patient:modifyDiagnosisProgress(incrementValue)
   self:updateDynamicInfo()
 end
 
--- Updates the patients diagnostic progress based on the doctors skill
+--! Updates the patients diagnostic progress based on the doctors skill
 -- called when they are done using a diagnosis room
 function Patient:completeDiagnosticStep(room)
   -- Base: depending on difficulty of disease as set in sam file
@@ -196,7 +204,7 @@ function Patient:completeDiagnosticStep(room)
   self:modifyDiagnosisProgress(diagnosis_base + (diagnosis_bonus * multiplier))
 end
 
--- Sets the hospital for the patient - additionally removing them from a
+--! Sets the hospital for the patient - additionally removing them from a
 -- hospital if they already belong to one. For player hospitals, patients who
 -- are not debug or emergency patients are made to seek a reception desk.
 --!param hospital (Hospital): hospital to assign to patient
@@ -341,11 +349,15 @@ function Patient:die()
   self:setDynamicInfoText(_S.dynamic_info.patient.actions.dying)
 end
 
--- Actions we can interrupt for in the canPeeOrPuke function
+-- Actions we can interrupt when at a fully empty tile.
 local good_actions = {walk=true, idle=true, seek_room=true, queue=true}
 
-function Patient:canPeeOrPuke(current)
-  if not good_actions[current.name] then return false end
+--! Test whether the current tile of the patient is useful for inserting an
+-- action that needs a fully empty tile in the hospital.
+--!param cur_action Current action of the patient.
+--!return Whether the tile can be used for inserting an action.
+function Patient:atFullyEmptyTile(cur_action)
+  if not good_actions[cur_action.name] then return false end
   if self.going_home then return false end
 
   local th = self.world.map.th
@@ -356,30 +368,25 @@ function Patient:canPeeOrPuke(current)
   return parcel ~= 0 and th:getPlotOwner(parcel) == self.hospital:getPlayerIndex()
 end
 
---! Animations for when there is an earth quake
-function Patient:falling()
+--! Falling animations for when there is an earth quake or the player is being very mean
+--!param player_init (bool) if true, player triggered the fall
+function Patient:falling(player_init)
   local current = self:getCurrentAction()
   current.keep_reserved = true
-  if self.falling_anim and self:canPeeOrPuke(current) and self.has_fallen == 1 then
-    self:setNextAction(FallingAction(), 0)
+  if self.falling_anim and self:atFullyEmptyTile(current) and self.has_fallen == 1 then
     self.has_fallen = 2
-    if self.has_fallen == 2 then
-      self:setNextAction(OnGroundAction())
-      self.on_ground = true
+    self:queueAction(FallingAction(), 1)
+    self:queueAction(OnGroundAction(), 2)
+    self:queueAction(GetUpAction(), 3)
+    -- show the patient is annoyed, if possbile
+    if math.random(1, 5) == 3 and self.shake_fist_anim then
+      self:queueAction(ShakeFistAction(), 4)
+      self:interruptAndRequeueAction(current, 5)
+    else
+      self:interruptAndRequeueAction(current, 4)
     end
-    if self.on_ground then
-      self:setNextAction(GetUpAction())
-    end
-    -- TODO: falls are broken, the will change once implemented
-    self:interruptAndRequeueAction(current, 2)
-    self.on_ground = false
-    if math.random(1, 5) == 3 then
-      self:shakeFist()
-    end
-    self:fallingAnnounce()
+    if player_init then self:fallingAnnounce() end
     self:changeAttribute("happiness", -0.05) -- falling makes you very unhappy
-  else
-    return
   end
 end
 
@@ -395,17 +402,10 @@ function Patient:fallingAnnounce()
   self.hospital:giveAdvice(msg)
 end
 
---! Perform 'shake fist' action.
-function Patient:shakeFist()
-  if self.shake_fist_anim then
-    self:queueAction(ShakeFistAction(), 1)
-  end
-end
-
 function Patient:vomit()
   local current = self:getCurrentAction()
   --Only vomit under these conditions. Maybe I should add a vomit for patients in queues too?
-  if self:canPeeOrPuke(current) and self.has_vomitted == 0 then
+  if self:atFullyEmptyTile(current) and self.has_vomitted == 0 then
     self:queueAction(VomitAction(), 1)
     self:interruptAndRequeueAction(current, 2)
     self.has_vomitted = self.has_vomitted + 1
@@ -418,7 +418,7 @@ end
 function Patient:pee()
   local current = self:getCurrentAction()
   --Only pee under these conditions. As with vomit, should they also pee if in a queue?
-  if self:canPeeOrPuke(current) then
+  if self:atFullyEmptyTile(current) then
     self:queueAction(PeeAction(), 1)
     self:interruptAndRequeueAction(current, 2)
     self:setMood("poo", "deactivate")
@@ -1124,6 +1124,11 @@ function Patient:afterLoad(old, new)
           action.must_happen = false
         end
       end
+    end
+  end
+  if old < 190 then
+    if self.humanoid_class == "Standard Female Patient" then
+      self.on_ground_anim = 1764
     end
   end
   self:updateDynamicInfo()

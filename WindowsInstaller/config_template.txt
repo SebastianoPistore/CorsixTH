@@ -40,6 +40,7 @@ height = SCREEN_SIZE_HEIGHT
 --  Russian               / ru / rus
 --  Spanish               / es / spa
 --  Swedish               / sv / swe
+--  Ukrainian             / uk / ukr
 --
 language = [[LANGUAGE_CHOSEN]]
 
@@ -94,6 +95,8 @@ capture_mouse = true
 -------------------------------------------------------------------------------
 -- Right Mouse Scrolling: By default, it is disabled (right_mouse_scrolling = false).
 -- This means that the default scrolling method is pressing the middle mouse button.
+-- Please note this an Experimental Feature and may interfere with other right mouse
+-- operations. Report bugs for this on Github Issue 2469.
 --
 right_mouse_scrolling = false
 
@@ -293,9 +296,16 @@ audio_buffer_size = 2048
 --
 debug = false
 
---Optional settings for CorsixTH's Lua DBGp client. Default settings are
--- nil values, platform & workingdir will be autodected if nil.
---https://wiki.eclipse.org/LDT/User_Area/User_Guides/User_Guide_1.2#Attach_session
+-- Experimental setting for falling patients. (debug only!)
+-- CorsixTH does not yet have reliable handling for falling actions and enabling it
+-- could cause dropped action queues or undesired bugs. You should leave this setting
+-- off unless you're developing with it
+--
+debug_falling = false
+
+-- Optional settings for CorsixTH's Lua DBGp client. Default settings are
+-- nil values, platform & working dir will be autodetected if nil.
+-- https://wiki.eclipse.org/LDT/User_Area/User_Guides/User_Guide_1.2#Attach_session
 --
 idehost = nil
 ideport = nil
